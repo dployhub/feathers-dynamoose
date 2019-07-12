@@ -41,34 +41,19 @@ const performScan = async (model, filters, $limit, $select, pagination) => {
   return scanOperation.exec();
 };
 
-const jsonifyResult = schema => result => {
-  const {scannedCount, count, timesScanned} = result;
-  return {scannedCount, count, timesScanned, data: jsonify(schema)(result)};
-};
-
 const findService = schema => (model, keys, pagination) => {
   return {
     find: async query => {
       const {$limit, $select, ...filters} = query || {};
-      const jsonifyResultBasedOnSchema = jsonifyResult(schema);
+      const jsonifyResult = result => ({...result, data: jsonify(schema)(result)});
       if (shouldUseQuery(filters, keys)) {
         const result = await performQuery(model, filters, $limit, $select, pagination);
-        return jsonifyResultBasedOnSchema(result);
+        return jsonifyResult(result);
       }
       const result = await performScan(model, filters, $limit, $select, pagination);
-      return jsonifyResultBasedOnSchema(result);
+      return jsonifyResult(result);
     }
   };
 };
-
-class FindService {
-  constructor(schema) {
-    this.schema = schema;
-  }
-
-  find(model, keys, pagination) {
-
-  }
-}
 
 export default findService;

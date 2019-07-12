@@ -74,7 +74,9 @@ export class Service {
       queryOperation.attributes($select);
     }
     if (Object.keys(attributes.where).length > 0) {
-      queryOperation.where(attributes.where);
+      Object.keys(attributes.where).forEach(key => {
+        queryOperation.where(key).eq(attributes.where[key]);
+      });
     }
     if (Object.keys(attributes.filters).length > 0) {
       Object.keys(attributes.filters).forEach(key => {

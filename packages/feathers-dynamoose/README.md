@@ -10,14 +10,14 @@
 ## Installation
 
 ```
-npm install feathers-dynamoose --save
+npm install @dployhub/feathers-dynamoose --save
 ```
 
 ## Documentation
 
 ```js
 // app.js
-const feathersDynamoose = require('feathers-dynamoose');
+const feathersDynamoose = require('@dployhub/feathers-dynamoose');
 
 app.use('/users', feathersDynamoose(
   options, // See below for full list of options
@@ -46,7 +46,7 @@ module.exports = {
 
 // src/app.js
 const uuid = require('uuid/v4');
-const feathersDynamoose = require('feathers-dynamoose');
+const feathersDynamoose = require('@dployhub/feathers-dynamoose');
 const postsSchema = require('users/schema');
 
 app.use('/v1/posts', feathersDynamoose({modelName: 'posts', schema: postsSchema}));
