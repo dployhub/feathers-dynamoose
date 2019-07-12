@@ -3,6 +3,7 @@ import dynamooseModule from 'dynamoose';
 import defaultLogger, {NO_MAX_OPTION_WARNING} from './logger';
 import findService from './find';
 import jsonify from './jsonify';
+import errors from '@feathersjs/errors';
 
 const getIndexKeysFromSchema = schema => {
   if (schema && schema.indexes) {
@@ -64,7 +65,10 @@ export class Service {
     params.paginate = false
     params.query = { ...(params.query || {}), [this.hashKey]: id };
     const result = await findService(this.options.schema)(this.model, this.keys).find(params);
-    return result && result.length && result.shift()
+    if (!(result && result.length)) {
+      throw new errors.NotFound(`${this.options.modelName} not found`)
+    }
+    return result[0]
   }
 
   async create(data, params) {
