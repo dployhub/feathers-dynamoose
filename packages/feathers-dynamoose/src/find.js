@@ -9,8 +9,44 @@ const shouldUseQuery = (filters, {hashKey, indexKeys}) => {
   return hasHashKey || hasGlobalIndex;
 };
 
-const performQuery = async (model, filters, $limit, $select, pagination) => {
-  const queryOperation = model.query(filters);
+const queryParts = (query, keys) => {
+  let { $limit, $select, $startAt, ...filters } = query || {};
+  $select = $select || [];
+  return Object.keys(filters || {}).reduce((acc, key) => {
+    const v = filters[key]
+    switch (true) {
+      case (key === keys.hashKey):
+        return {...acc, hashQuery: { [key]: { eq: v } }};
+      case (key === keys.rangeKey):
+        return {...acc, where: {...acc.where, [key]: v}};
+      default:
+        return {...acc, filters: {...acc.filters, [key]: v}};
+    }
+  }, { $limit, $select, hashQuery: {}, where: {}, filters: {} });
+}
+
+const performQuery = async (model, params, keys) => {
+  const { $limit, $select, hashQuery, where, filters } = queryParts(params.query, keys)
+  const queryOperation = shouldUseQuery(filters, keys) ? model.query(hashQuery) : model.scan(hashQuery)
+  
+  if (Object.keys(where).length > 0) {
+    Object.keys(where).forEach(key => {
+      queryOperation.where(key).eq(where[key]);
+    });
+  }
+  if (Object.keys(filters).length > 0) {
+    Object.keys(filters).forEach(key => {
+      queryOperation.filter(key).eq(filters[key]);
+    });
+  }
+  if (Array.isArray($select) && $select.length > 0) {
+    queryOperation.attributes($select);
+  }
+
+  /* TODO: Fix pagination
+   * Do not implement $limit or pagination because Dynamodb implements it BEFORE filtering, 
+   * which means scenarios such as returning 1 single item by hash/range will always fail
+   * 
   if ($limit) {
     queryOperation.limit($limit);
   } else if (pagination && pagination.max) {
@@ -18,40 +54,26 @@ const performQuery = async (model, filters, $limit, $select, pagination) => {
   } else {
     queryOperation.all();
   }
-  if (Array.isArray($select) && $select.length > 0) {
-    queryOperation.attributes($select);
-  }
+  */
 
   return queryOperation.exec();
+}
+
+const jsonifyResult = schema => (result, paginate) => {
+  const { scannedCount, count, timesScanned, lastKey, ...data } = result;
+  // data is converted from Array to Object during destructuring
+  // we need to convert it back before passing it to jsonify()
+  const dataArr = []
+  Object.values(data).map(o => dataArr.push(o))
+  const jsonData = jsonify(schema)(dataArr)
+  return paginate ? { scannedCount, count, timesScanned, lastKey, data: jsonData } : jsonData;
 };
 
-const performScan = async (model, filters, $limit, $select, pagination) => {
-  const scanOperation = model.scan(filters);
-  if ($limit) {
-    scanOperation.limit($limit);
-  } else if (pagination && pagination.max) {
-    scanOperation.limit(pagination.max);
-  } else {
-    scanOperation.all();
-  }
-  if (Array.isArray($select) && $select.length > 0) {
-    scanOperation.attributes($select);
-  }
-
-  return scanOperation.exec();
-};
-
-const findService = schema => (model, keys, pagination) => {
+const findService = schema => (model, keys) => {
   return {
-    find: async query => {
-      const {$limit, $select, ...filters} = query || {};
-      const jsonifyResult = result => ({...result, data: jsonify(schema)(result)});
-      if (shouldUseQuery(filters, keys)) {
-        const result = await performQuery(model, filters, $limit, $select, pagination);
-        return jsonifyResult(result);
-      }
-      const result = await performScan(model, filters, $limit, $select, pagination);
-      return jsonifyResult(result);
+    find: async params => {
+      const result = await performQuery(model, params, keys)
+      return jsonifyResult(schema)(result, params.paginate !== false);
     }
   };
 };

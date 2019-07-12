@@ -8,17 +8,17 @@ const getIndexKeysFromSchema = schema => {
   if (schema && schema.indexes) {
     return Object.values(schema.indexes.global).map(index => index.name);
   }
-  const indexKeys = Object.keys(schema).filter(key => schema[key].index && schema[key].index.global);
+  const indexKeys = Object.keys(schema).filter(key => schema[key] && schema[key].index && schema[key].index.global);
   return Array.isArray(indexKeys) ? indexKeys : [];
 };
 
 const getHashKeyFromSchema = schema => schema instanceof dynamooseModule.Schema && schema.hashKey ?
   schema.hashKey.name :
-  Object.keys(schema).filter(key => schema[key].hashKey)[0];
+  Object.keys(schema).filter(key => schema[key] && schema[key].hashKey)[0];
 
 const getRangeKeyFromSchema = schema => schema instanceof dynamooseModule.Schema ?
   schema.rangeKey && schema.rangeKey.name :
-  Object.keys(schema).filter(key => schema[key].rangeKey)[0];
+  Object.keys(schema).filter(key => schema[key] && schema[key].rangeKey)[0];
 
 export const {Schema} = dynamooseModule;
 export const DEFAULT_DYNAMOOSE_OPTIONS = {
@@ -51,40 +51,20 @@ export class Service {
     this.jsonify = jsonify(schema);
   }
 
+  get keys() {
+    const {hashKey, rangeKey, indexKeys} = this;
+    return {hashKey, rangeKey, indexKeys}
+  }
+
   async find(params = {query: {}}) {
-    const {hashKey, indexKeys} = this;
-    return findService(this.options.schema)(this.model, {hashKey, indexKeys}, this.paginate).find(params.query);
+    return findService(this.options.schema)(this.model, this.keys).find(params);
   }
 
   async get(id, params = {}) {
-    const query = {[this.hashKey]: {eq: id}};
-    const attributes = Object.keys(params.query || {}).reduce((acc, key) => {
-      if (key === '$select') {
-        return acc;
-      }
-      if (key === this.rangeKey) {
-        return {...acc, where: {...acc.where, [key]: params.query[key]}};
-      }
-      return {...acc, filters: {...acc.filters, [key]: params.query[key]}};
-    }, {where: {}, filters: {}});
-
-    const queryOperation = await this.model.query(query);
-    const $select = (params.query && params.query.$select) || [];
-    if (params.query && $select && Array.isArray($select) && $select.length > 0) {
-      queryOperation.attributes($select);
-    }
-    if (Object.keys(attributes.where).length > 0) {
-      Object.keys(attributes.where).forEach(key => {
-        queryOperation.where(key).eq(attributes.where[key]);
-      });
-    }
-    if (Object.keys(attributes.filters).length > 0) {
-      Object.keys(attributes.filters).forEach(key => {
-        queryOperation.filter(key).eq(attributes.filters[key]);
-      });
-    }
-    const [result] = await queryOperation.exec();
-    return this.jsonify(result);
+    params.paginate = false
+    params.query = { ...(params.query || {}), [this.hashKey]: id };
+    const result = await findService(this.options.schema)(this.model, this.keys).find(params);
+    return result && result.length && result.shift()
   }
 
   async create(data, params) {
