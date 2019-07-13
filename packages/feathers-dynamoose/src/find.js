@@ -10,24 +10,24 @@ const shouldUseQuery = (filters, {hashKey, indexKeys}) => {
 };
 
 const queryParts = (query, keys) => {
-  let { $limit, $select, $startAt, ...filters } = query || {};
+  let { $limit, $select, $paginate, ...filters } = query || {};
   $select = $select || [];
   return Object.keys(filters || {}).reduce((acc, key) => {
     const v = filters[key]
     switch (true) {
-      case (key === keys.hashKey):
+      case (key === keys.hashKey || (keys.indexKeys && keys.indexKeys.indexOf(key) !== -1)):
         return {...acc, hashQuery: { [key]: { eq: v } }};
       case (key === keys.rangeKey):
         return {...acc, where: {...acc.where, [key]: v}};
       default:
         return {...acc, filters: {...acc.filters, [key]: v}};
     }
-  }, { $limit, $select, hashQuery: {}, where: {}, filters: {} });
+  }, { $limit, $select, $paginate, query, hashQuery: {}, where: {}, filters: {} });
 }
 
 const performQuery = async (model, params, keys) => {
-  const { $limit, $select, hashQuery, where, filters } = queryParts(params.query, keys)
-  const queryOperation = shouldUseQuery(filters, keys) ? model.query(hashQuery) : model.scan(hashQuery)
+  const { $limit, $select, $paginate, query, hashQuery, where, filters } = params
+  const queryOperation = shouldUseQuery(query, keys) ? model.query(hashQuery) : model.scan(hashQuery)
   
   if (Object.keys(where).length > 0) {
     Object.keys(where).forEach(key => {
@@ -60,20 +60,32 @@ const performQuery = async (model, params, keys) => {
 }
 
 const jsonifyResult = schema => (result, paginate) => {
-  const { scannedCount, count, timesScanned, lastKey, ...data } = result;
+  const { scannedCount, count, timesScanned, timesQueried, lastKey, ...data } = result;
   // data is converted from Array to Object during destructuring
   // we need to convert it back before passing it to jsonify()
   const dataArr = []
   Object.values(data).map(o => dataArr.push(o))
   const jsonData = jsonify(schema)(dataArr)
-  return paginate ? { scannedCount, count, timesScanned, lastKey, data: jsonData } : jsonData;
+
+  // return only data array if paginate is set to false
+  return paginate ? { scannedCount, count, timesScanned, timesQueried, lastKey, data: jsonData } : jsonData;
 };
 
 const findService = schema => (model, keys) => {
   return {
     find: async params => {
-      const result = await performQuery(model, params, keys)
-      return jsonifyResult(schema)(result, params.paginate !== false);
+      const parts = queryParts(params.query, keys)
+      // check to see if $paginate is set in the query (client)
+      // if not, default to params.paginate (server)
+      // default to true if paginate is not supplied
+      let paginate = typeof parts.$paginate !== 'undefined' 
+        ? parts.$paginate
+        : (typeof params.paginate !== 'undefined' ? params.paginate : true)
+      if (typeof paginate === 'string') {
+        paginate = !(paginate.toLowerCase() === 'false' || paginate === '0')
+      }
+      const result = await performQuery(model, parts, keys)
+      return jsonifyResult(schema)(result, paginate);
     }
   };
 };

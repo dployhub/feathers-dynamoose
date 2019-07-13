@@ -66,8 +66,9 @@ export class Service {
     params.query = { ...(params.query || {}), [this.hashKey]: id };
     const result = await findService(this.options.schema)(this.model, this.keys).find(params);
     if (!(result && result.length)) {
-      throw new errors.NotFound(`${this.options.modelName} not found`)
+      throw new errors.NotFound(`No record found for id '${id}'`)
     }
+    
     return result[0]
   }
 
