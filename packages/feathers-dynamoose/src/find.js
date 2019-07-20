@@ -13,7 +13,11 @@ const queryParts = (query, keys) => {
   let { $limit, $select, $paginate, ...filters } = query || {};
   $select = $select || [];
   return Object.keys(filters || {}).reduce((acc, key) => {
-    const v = filters[key]
+    let v = filters[key]
+    if (typeof v === 'string') {
+      if (v.toLowerCase() === 'false') v = false 
+      else if (v.toLowerCase() === 'true') v = true
+    }
     switch (true) {
       case (key === keys.hashKey || (keys.indexKeys && keys.indexKeys.indexOf(key) !== -1)):
         return {...acc, hashQuery: { [key]: { eq: v } }};

@@ -1,6 +1,6 @@
 {
   "name": "@dployhub/feathers-dynamoose-repo",
-  "version": "0.3.2-alpha.6",
+  "version": "0.3.2-alpha.7",
   "description": "Feathers service for DynamoDB with dynamoose",
   "main": "index.js",
   "scripts": {
